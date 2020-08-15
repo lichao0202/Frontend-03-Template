@@ -1,10 +1,46 @@
-const { cursorTo } = require("readline");
-
 let currentToken;
 let currentAttribute;
 
+let stack = [{type: 'document', children: []}]
+
 function emit(token) {
-  console.log(token)
+  if (token.type == 'text') {
+    return
+  }
+
+  let top = stack[stack.length - 1]
+
+  if (token.type == 'startTag') {
+    let element = {
+      type: 'element',
+      children: [],
+      attribute: []
+    }
+
+    element.tagName = token.tagName
+
+    for (let p in token) {
+      if (p !== 'type' && p !== 'tagName') {
+        element.attribute.push({name: p, value: token[p]})
+      }
+    }
+
+    top.children.push(element)
+    element.parent = top
+
+    if (!token.isSelfClosing) {
+      stack.push(element)
+    }
+
+    currentTextNode = null
+  } else if (token.type == 'endTag') {
+    if (top.tagName !== token.tagName) {
+      throw new Error('Tag start and end not match')
+    } else {
+      stack.pop()
+    }
+    currentTextNode = null
+  }
 }
 
 const EOF = Symbol('EOF')
@@ -224,5 +260,6 @@ module.exports.parseHtml = function parseHtml(html) {
   for (c of html) {
     state = state(c)
   }
+  console.log(stack)
   state = state(EOF)
 }
