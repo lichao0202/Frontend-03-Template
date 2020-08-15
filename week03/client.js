@@ -1,4 +1,5 @@
 const net = require('net')
+const parser = require('./parser')
 
 class Request {
   constructor(options) {
@@ -148,7 +149,6 @@ class ResponseParser {
         }
       }
     } else if (this.current === this.WAITING_BODY) {
-      console.log(char)
       this.bodyParser.receiveChar(char)
     }
   }
@@ -185,10 +185,8 @@ class ChunkedBodyParser {
         this.current = this.READING_CHUNK
       }
     } else if (this.current === this.READING_CHUNK) {
-      console.log('READING_CHUNK: ', char)
       this.content.push(char)
       this.length--
-      console.log('this.length:', this.length)
       if (this.length === 0) {
         this.current = this.WAITING_NEW_LINE
       }
@@ -220,5 +218,6 @@ void async function() {
 
   let response = await request.send()
 
-  console.log('response:', response)
+  const dom = parser.parseHtml(response.body)
+  console.log('response:', dom)
 }()
