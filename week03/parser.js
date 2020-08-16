@@ -6,6 +6,54 @@ let rules = []
 
 let stack = [{type: 'document', children: []}]
 
+// function specificity(selector) {
+//   const p = [0, 0, 0, 0]
+//   const selectorParts = selector.split(' ')
+//   for (let part of selectorParts) {
+//     const firstChar = part.charAt(0)
+//     if (firstChar == '#') {
+//       p[1] += 1
+//     } else if (firstChar == '.') {
+//       p[2] += 1
+//     } else {
+//       p[3] += 1
+//     }
+//   }
+//   return p
+// }
+
+// 支持复合选择器，p标签的text-align为center表明工作正常
+function specificity(selector) {
+  const p = [0, 0, 0, 0]
+  const selectorParts = selector.split(' ')
+  for (let part of selectorParts) {
+    // 选择器id，一个元素只能有一个id
+    let id = part.match(/#[a-zA-Z-_\d]+/g) ? part.match(/#[a-zA-Z-_]+/g)[0] : null
+    // 选择器class列表
+    let classList = (part.match(/\.[a-zA-Z-_\d]+/g) || []).map(id => id.slice(1))
+    // 元素选择器，没有则为null
+    let elem = part.match(/^[a-zA-Z-_\d]+/g) ? part.match(/^[a-zA-Z-_]+/g)[0] : null
+
+    p[1] += id ? 1 : 0
+    p[2] += classList.length
+    p[3] += elem ? 1 : 0
+  }
+  return p
+}
+
+function compareSpecificity(spec1, spec2) {
+  if (spec1[0] - spec2[0]) {
+    return spec1[0] - spec2[0]
+  }
+  if (spec1[1] - spec2[1]) {
+    return spec1[1] - spec2[1]
+  }
+  if (spec1[2] - spec2[2]) {
+    return spec1[2] - spec2[2]
+  }
+  return spec1[3] - spec2[3]
+}
+
 function emit(token) {
   let top = stack[stack.length - 1]
 
@@ -65,7 +113,6 @@ function addCssRules(content) {
 }
 
 function computeCss(element) {
-  console.log(rules)
   const elements = stack.slice().reverse()
 
   if (!element.computedStyle) {
@@ -76,7 +123,7 @@ function computeCss(element) {
     // 这里假设只有以空格分隔的简单css规则，没有复合选择器
     const selectorList = rule.selectors[0].split(' ').reverse()
 
-    if (!match(element, selectorList[0])) {
+    if (!ruleMatch(element, selectorList[0])) {
       continue
     }
 
@@ -84,7 +131,7 @@ function computeCss(element) {
 
     var j = 1 // 从父级元素开始匹配
     for (let i = 0; i < elements.length; i++) {
-      if (match(elements[i], selectorList[j])) {
+      if (ruleMatch(elements[i], selectorList[j])) {
         j++ // 匹配上就继续匹配下一个选择器，没匹配上就再向父级匹配
       }
 
@@ -99,40 +146,83 @@ function computeCss(element) {
     if (matched) {
       // 匹配成功
       const computedStyle = element.computedStyle
+      const sp = specificity(rule.selectors[0])
       for (let declare of rule.declarations) {
         if (!computedStyle[declare.property]) computedStyle[declare.property] = {}
 
-        computedStyle[declare.property].value = declare.value
+        if (!computedStyle[declare.property].specificity) {
+          computedStyle[declare.property].specificity = sp
+          computedStyle[declare.property].value = declare.value
+        } else {
+          if (compareSpecificity(computedStyle[declare.property].specificity, sp) < 0) {
+            computedStyle[declare.property].specificity = sp
+            computedStyle[declare.property].value = declare.value
+          }
+        }
       }
-
-      console.log(element.computedStyle)
     }
   }
 }
 
-function match(element, selector) {
-  if (!element || !element.attribute) {
+function ruleMatch(element, selector) {
+  if (!element || !element.attribute || !selector) {
     return false
   }
+  // 选择器id
+  const id = selector.match(/#[a-zA-Z-_\d]+/g) ? selector.match(/#[a-zA-Z-_]+/g)[0] : null
+  // 选择器class列表
+  const classList = (selector.match(/\.[a-zA-Z-_\d]+/g) || []).map(id => id.slice(1))
+  // 元素选择器，没有则为null
+  const elem = selector.match(/^[a-zA-Z-_\d]+/g) ? selector.match(/^[a-zA-Z-_]+/g)[0] : null
 
-  if (selector.charAt(0) == '#') {
+  let idMatched = !id // 没有id选择器，则默认为true，表示id无需匹配
+  let elemMatched = !elem
+  let classMatched = classList.length === 0 // length为零表示没有class规则，无需匹配
+  if (id) { // 有id选择器
     const attr = element.attribute.filter(item => item.name == 'id')[0]
-    if (attr && attr.value == selector.replace('#', '')) {
-      return true
-    }
-  } else if (selector.charAt(0) == '.') {
+    idMatched = attr && attr.value == id.slice(1)
+  }
+  if (elem) {
+    elemMatched = element.tagName == elem
+  }
+  if (classList.length > 0) {
     const attr = element.attribute.filter(item => item.name == 'class')[0]
-    if (attr && attr.value == selector.replace('.', '')) {
-      return true
-    }
-  } else {
-    if (element.tagName == selector) {
-      return true
-    }
+    const classes = (attr && attr.value.split(' ')) || []// 元素的class列表
+    let matched = true
+    classList.forEach(cls => {
+      if (!classes.includes(cls)) {
+        matched = false
+      }
+    })
+    classMatched = matched
   }
 
-  return false
+  return idMatched && elemMatched && classMatched
 }
+
+// function match(element, selector) {
+//   if (!element || !element.attribute) { // TODO: 这个判断你是不是有问题？如果只是标签选择器，没有属性呢
+//     return false
+//   }
+
+//   if (selector.charAt(0) == '#') {
+//     const attr = element.attribute.filter(item => item.name == 'id')[0]
+//     if (attr && attr.value == selector.replace('#', '')) {
+//       return true
+//     }
+//   } else if (selector.charAt(0) == '.') {
+//     const attr = element.attribute.filter(item => item.name == 'class')[0]
+//     if (attr && attr.value == selector.replace('.', '')) {
+//       return true
+//     }
+//   } else {
+//     if (element.tagName == selector) {
+//       return true
+//     }
+//   }
+
+//   return false
+// }
 
 const EOF = Symbol('EOF')
 
@@ -213,7 +303,7 @@ function beforeAttributeName(c) {
     return beforeAttributeName
   } else if (c === '/' || c === '>' || c === EOF) { // 等待下一个标签
     return afterAttributeName(c)
-  } else if (c === '=') { // TODO: 这一块逻辑不是很懂
+  } else if (c === '=') {
     return beforeAttributeName
   } else {
     currentAttribute = {
@@ -285,7 +375,6 @@ function singleQuotedAttributeValue(c) {
 
   } else {
     currentAttribute.value += c
-    // return doubleQuotedAttributeValue // TODO：单引号也进入双引号状态机？但是双引号状态机里面也没有判断单引号的情况呀？
     return singleQuotedAttributeValue
   }
 }
@@ -314,7 +403,7 @@ function unquotedAttributeValue(c) {
 }
 
 function afterSingleQuotedAttributeValue(c) {
-  if (c.match(/^[\t\n\f ]$/)) { // TODO: 遇到空格就进入下一个属性解析？那class可以多个空格怎么办？
+  if (c.match(/^[\t\n\f ]$/)) {
     return beforeAttributeName
   } else if (c == '/') {
     return selfClosingStartTag
@@ -326,11 +415,11 @@ function afterSingleQuotedAttributeValue(c) {
 
   } else {
     currentAttribute.value += c
-    return singleQuotedAttributeValue // TODO: 单引号的属性值怎么办？
+    return singleQuotedAttributeValue
   }
 }
 function afterDoubleQuotedAttributeValue(c) {
-  if (c.match(/^[\t\n\f ]$/)) { // TODO: 遇到空格就进入下一个属性解析？那class可以多个空格怎么办？
+  if (c.match(/^[\t\n\f ]$/)) {
     return beforeAttributeName
   } else if (c == '/') {
     return selfClosingStartTag
@@ -342,7 +431,7 @@ function afterDoubleQuotedAttributeValue(c) {
 
   } else {
     currentAttribute.value += c
-    return doubleQuotedAttributeValue // TODO: 单引号的属性值怎么办？
+    return doubleQuotedAttributeValue
   }
 }
 
