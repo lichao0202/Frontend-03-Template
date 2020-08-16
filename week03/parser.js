@@ -1,13 +1,12 @@
+const css = require('css');
 let currentToken;
 let currentAttribute;
+let currentTextNode = null
+let rules = []
 
 let stack = [{type: 'document', children: []}]
 
 function emit(token) {
-  if (token.type == 'text') {
-    return
-  }
-
   let top = stack[stack.length - 1]
 
   if (token.type == 'startTag') {
@@ -25,6 +24,8 @@ function emit(token) {
       }
     }
 
+    computeCss(element)
+
     top.children.push(element)
     element.parent = top
 
@@ -37,10 +38,100 @@ function emit(token) {
     if (top.tagName !== token.tagName) {
       throw new Error('Tag start and end not match')
     } else {
+      /* 处理css */
+      if (token.tagName == 'style') {
+        addCssRules(currentTextNode.content)
+      }
       stack.pop()
     }
     currentTextNode = null
+  } else if (token.type == 'text') {
+    if (currentTextNode === null) {
+      currentTextNode = {
+        type: 'Text',
+        content: ''
+      }
+
+      top.children.push(currentTextNode)
+    }
+
+    currentTextNode.content += token.content
   }
+}
+
+function addCssRules(content) {
+  const ast = css.parse(content)
+  rules.push(...ast.stylesheet.rules)
+}
+
+function computeCss(element) {
+  console.log(rules)
+  const elements = stack.slice().reverse()
+
+  if (!element.computedStyle) {
+    element.computedStyle = {}
+  }
+
+  for (let rule of rules) {
+    // 这里假设只有以空格分隔的简单css规则，没有复合选择器
+    const selectorList = rule.selectors[0].split(' ').reverse()
+
+    if (!match(element, selectorList[0])) {
+      continue
+    }
+
+    let matched = false
+
+    var j = 1 // 从父级元素开始匹配
+    for (let i = 0; i < elements.length; i++) {
+      if (match(elements[i], selectorList[j])) {
+        j++ // 匹配上就继续匹配下一个选择器，没匹配上就再向父级匹配
+      }
+
+      // 选择器匹配完成
+      if (j >= selectorList.length) {
+        matched = true
+        break
+      }
+    }
+
+
+    if (matched) {
+      // 匹配成功
+      const computedStyle = element.computedStyle
+      for (let declare of rule.declarations) {
+        if (!computedStyle[declare.property]) computedStyle[declare.property] = {}
+
+        computedStyle[declare.property].value = declare.value
+      }
+
+      console.log(element.computedStyle)
+    }
+  }
+}
+
+function match(element, selector) {
+  if (!element || !element.attribute) {
+    return false
+  }
+
+  if (selector.charAt(0) == '#') {
+    const attr = element.attribute.filter(item => item.name == 'id')[0]
+    if (attr && attr.value == selector.replace('#', '')) {
+      return true
+    }
+  } else if (selector.charAt(0) == '.') {
+    const attr = element.attribute.filter(item => item.name == 'class')[0]
+    if (attr && attr.value == selector.replace('.', '')) {
+      return true
+    }
+  } else {
+    if (element.tagName == selector) {
+      return true
+    }
+  }
+
+  return false
 }
 
 const EOF = Symbol('EOF')
