@@ -39,6 +39,9 @@ http.createServer((request, response) => {
     p.p-class-2 {
       text-align: 'right';
     }
+    #bb div.aa {
+      color: red;
+    }
   </style>
 </head>
 <body>
@@ -46,6 +49,9 @@ http.createServer((request, response) => {
     <img id='myid' />
     <img id="myImg" />
     <p class="p-class-1 p-class-2">p text</p>
+    <div id="bb">
+      <div class="aa"></div>
+    </div>
   </div>
 </body>
 </html>`)

@@ -1,4 +1,5 @@
 const css = require('css');
+const layout = require('./layout.js');
 let currentToken;
 let currentAttribute;
 let currentTextNode = null
@@ -90,6 +91,7 @@ function emit(token) {
       if (token.tagName == 'style') {
         addCssRules(currentTextNode.content)
       }
+      layout(top)
       stack.pop()
     }
     currentTextNode = null
@@ -442,5 +444,5 @@ module.exports.parseHtml = function parseHtml(html) {
   }
   console.log(stack)
   state = state(EOF)
-  return stack
+  return stack[0]
 }
